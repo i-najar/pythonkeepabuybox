@@ -1,7 +1,6 @@
 import os
 import requests
 from dotenv import load_dotenv
-import json
 
 load_dotenv()
 
@@ -20,6 +19,7 @@ def check_offers_stock(asin):
         list: A list of dictionaries with the following keys:
             - 'sellerId' (str): The ID of the seller.
             - 'latest_stock' (int): The latest stock quantity of that seller.
+                This is based on the most recent timestamp in the stock data.
 
     """
 
@@ -30,27 +30,38 @@ def check_offers_stock(asin):
         response.raise_for_status()
         product = response.json().get("products", [])[0]
 
-        with open(f"{asin}_product_data.json", "w") as json_file:
-            json.dump(product, json_file, indent=4)
-
         if not product:
             print(f"No product data available for ASIN: {asin}")
             return []
 
         if product.get("offers"):
-            offer_data = []
+            seller_latest_info = {}
+
             for offer in product["offers"]:
                 seller_id = offer.get("sellerId")
                 stock_data = offer.get("stockCSV")
 
                 if stock_data:
-                    latest_stock = stock_data[-1]
-                    offer_data.append(
-                        {"sellerId": seller_id, "latest_stock": latest_stock}
-                    )
+                    for i in range(0, len(stock_data), 2):
+                        timestamp = stock_data[i]
+                        stock_count = stock_data[i + 1]
+
+                        if (
+                            seller_id not in seller_latest_info
+                            or timestamp > seller_latest_info[seller_id]["timestamp"]
+                        ):
+                            seller_latest_info[seller_id] = {
+                                "latest_stock": stock_count,
+                                "timestamp": timestamp,
+                            }
 
                 else:
                     print(f"No stock data available for seller {seller_id}")
+
+            offer_data = [
+                {"sellerId": seller_id, "latest_stock": info["latest_stock"]}
+                for seller_id, info in seller_latest_info.items()
+            ]
 
             return offer_data
 
@@ -63,19 +74,17 @@ def check_offers_stock(asin):
         return []
 
 
-check_offers_stock(asin=os.getenv("ASIN"))
-
 # Uncomment for testing purposes
 
-if __name__ == "__main__":
-    asin = os.getenv("ASIN")
-    product_stock = check_offers_stock(asin)
+# if __name__ == "__main__":
+#     asin = os.getenv("ASIN")
+#     product_stock = check_offers_stock(asin)
 
-    if product_stock:
-        print(f"Offer stock information for ASIN: {asin}")
-        for offer in product_stock:
-            seller_id = offer["sellerId"]
-            latest_stock = offer["latest_stock"]
-            print(f"Seller ID: {seller_id}, Latest Stock: {latest_stock}")
-    else:
-        print(f"No offers available for ASIN: {asin}")
+#     if product_stock:
+#         print(f"Offer stock information for ASIN: {asin}")
+#         for offer in product_stock:
+#             seller_id = offer["sellerId"]
+#             latest_stock = offer["latest_stock"]
+#             print(f"Seller ID: {seller_id}, Latest Stock: {latest_stock}")
+#     else:
+#         print(f"No offers available for ASIN: {asin}")
